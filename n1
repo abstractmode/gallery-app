@@ -1,0 +1,171 @@
+/*
+  Farcaster NFT Gallery — single-file Frames app
+  ------------------------------------------------
+  • What it is: A minimal Farcaster Frame that lets users browse an NFT gallery
+    (Prev/Next) and open the NFT link. All logic lives in this ONE file.
+  • Tech: Node 18+, Frog (Frames toolkit), JSX image rendering.
+  • Deploy anywhere that can run Node or Edge (Vercel, Fly, etc.).
+
+  Quick start (local):
+  1) mkdir nft-frame && cd nft-frame
+  2) Save this file as `frame.js`
+  3) npm init -y
+  4) npm install frog @vercel/og zod
+  5) node frame.js
+  6) Your Frame endpoint will be http://localhost:3000/frame
+
+  Use in Warpcast / Farcaster:
+  - Create a cast linking to: http://<your-host>/frame
+  - The Frame renders an image and buttons (Prev / Next / Open NFT)
+
+  Customize:
+  - Edit the NFTS array below with your own NFT image URLs and target links.
+  - Optionally set NFTS via environment variable GALLERY_JSON (see below).
+
+  Notes:
+  - This app deliberately avoids external APIs to stay one-file simple.
+  - Make sure your image URLs are CORS/remote-friendly and publicly accessible.
+*/
+
+import { Frog, Button } from 'frog'
+import { ImageResponse } from '@vercel/og'
+import { serve } from 'frog/serve'
+
+// ---------- Configuration ----------
+// Provide your gallery here (fallback if no env provided)
+const DEFAULT_NFTS = [
+  {
+    name: 'Abstract Penguin #1',
+    image: 'https://images.unsplash.com/photo-1520975693416-35a4c81a39b2?q=80&w=1200&auto=format&fit=crop',
+    url: 'https://example.com/nft/abstract-penguin-1'
+  },
+  {
+    name: 'Purple Hedgehog Alien',
+    image: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=1200&auto=format&fit=crop',
+    url: 'https://example.com/nft/purple-hedgehog-alien'
+  },
+  {
+    name: 'Cyberpunk Water Drop',
+    image: 'https://images.unsplash.com/photo-1514511542320-e04d74f9db14?q=80&w=1200&auto=format&fit=crop',
+    url: 'https://example.com/nft/cyberpunk-water-drop'
+  },
+]
+
+// You can pass a JSON array via env to avoid editing code:
+//   export GALLERY_JSON='[{"name":"My NFT","image":"https://...","url":"https://..."}]'
+function loadGallery() {
+  try {
+    if (process.env.GALLERY_JSON) {
+      const parsed = JSON.parse(process.env.GALLERY_JSON)
+      if (Array.isArray(parsed) && parsed.length) return parsed
+    }
+  } catch (e) {
+    console.warn('Invalid GALLERY_JSON env; falling back to DEFAULT_NFTS')
+  }
+  return DEFAULT_NFTS
+}
+
+// Canvas sizing for Frame image
+const SIZE = { width: 1200, height: 630 }
+
+// ---------- App ----------
+const app = new Frog({
+  basePath: '/frame',
+  imageOptions: SIZE,
+})
+
+// Main frame
+app.frame('/', (c) => {
+  const { buttonValue, previousState } = c
+  const nfts = loadGallery()
+  const total = nfts.length
+
+  // persistent state: index of the current NFT
+  let i = typeof previousState?.i === 'number' ? previousState.i : 0
+
+  if (buttonValue === 'next') i = (i + 1) % total
+  if (buttonValue === 'prev') i = (i - 1 + total) % total
+
+  const current = nfts[i]
+
+  // Return a rendered image via @vercel/og (JSX to PNG)
+  return c.res({
+    image: new ImageResponse(
+      (
+        <div
+          style={{
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            background: '#0b0b10',
+            color: 'white',
+            fontFamily: 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter',
+            position: 'relative',
+            padding: 32,
+          }}
+        >
+          {/* Title bar */}
+          <div style={{ position: 'absolute', top: 24, left: 32, right: 32, display: 'flex', justifyContent: 'space-between', opacity: 0.9 }}>
+            <div style={{ fontSize: 28, fontWeight: 700 }}>Farcaster NFT Gallery</div>
+            <div style={{ fontSize: 18, opacity: 0.8 }}>{i + 1} / {total}</div>
+          </div>
+
+          {/* Image */}
+          <div
+            style={{
+              width: SIZE.width - 120,
+              height: SIZE.height - 170,
+              borderRadius: 24,
+              overflow: 'hidden',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+              border: '1px solid rgba(255,255,255,0.12)'
+            }}
+          >
+            <img
+              src={current.image}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          </div>
+
+          {/* Caption */}
+          <div style={{ marginTop: 18, fontSize: 24, fontWeight: 600, textAlign: 'center' }}>
+            {current.name}
+          </div>
+        </div>
+      ),
+      SIZE
+    ),
+
+    intents: [
+      <Button value="prev">◀ Prev</Button>,
+      <Button value="next">Next ▶</Button>,
+      <Button.Link href={current.url}>Open NFT</Button.Link>,
+    ],
+
+    // Persist current index
+    state: { i },
+  })
+})
+
+// Health check & index hint
+app.frame('/about', (c) => {
+  return c.res({
+    image: new ImageResponse(
+      (
+        <div style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: 'black', color: 'white', fontSize: 44 }}>
+          Use /frame for the NFT gallery
+        </div>
+      ),
+      SIZE
+    ),
+    intents: [<Button.Link href="https://warpcast.com/">Warpcast</Button.Link>]
+  })
+})
+
+// --------- Server (Node) ---------
+const PORT = process.env.PORT ? Number(process.env.PORT) : 3000
+serve({ fetch: app.fetch, port: PORT })
+console.log(`Farcaster NFT Gallery Frame running at http://localhost:${PORT}/frame`)
