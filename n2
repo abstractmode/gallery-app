@@ -1,0 +1,77 @@
+/*
+  Farcaster NFT Gallery — Version 2 (simpler minimal variant)
+  -----------------------------------------------------------
+  • What it is: A stripped-down Farcaster Frame that cycles NFTs (Prev/Next)
+    with no environment parsing. All NFT data is inline.
+  • Tech: Node 18+, Frog (Frames toolkit), JSX image rendering.
+  • Deploy anywhere that can run Node or Edge (Vercel, Fly, etc.).
+
+  Quick start:
+  1) mkdir nft-frame-v2 && cd nft-frame-v2
+  2) Save as `frame.js`
+  3) npm init -y && npm install frog @vercel/og
+  4) node frame.js
+  5) Cast with http://localhost:3000/frame
+*/
+
+import { Frog, Button } from 'frog'
+import { ImageResponse } from '@vercel/og'
+import { serve } from 'frog/serve'
+
+// --- Simple gallery config ---
+const NFTS = [
+  {
+    name: 'Glowing Crystal Sail',
+    image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200&auto=format&fit=crop',
+    url: 'https://example.com/nft/glowing-crystal-sail'
+  },
+  {
+    name: 'Neon Arcade Cube',
+    image: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=1200&auto=format&fit=crop',
+    url: 'https://example.com/nft/neon-arcade-cube'
+  },
+  {
+    name: 'Liquid Plastic Ocean',
+    image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200&auto=format&fit=crop',
+    url: 'https://example.com/nft/liquid-plastic-ocean'
+  }
+]
+
+const SIZE = { width: 1200, height: 630 }
+
+// --- App ---
+const app = new Frog({ basePath: '/frame', imageOptions: SIZE })
+
+app.frame('/', (c) => {
+  const { buttonValue, previousState } = c
+  let i = typeof previousState?.i === 'number' ? previousState.i : 0
+
+  if (buttonValue === 'next') i = (i + 1) % NFTS.length
+  if (buttonValue === 'prev') i = (i - 1 + NFTS.length) % NFTS.length
+
+  const current = NFTS[i]
+
+  return c.res({
+    image: new ImageResponse(
+      (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'black', width: '100%', height: '100%', color: 'white', fontFamily: 'sans-serif' }}>
+          <img src={current.image} style={{ width: '100%', height: '80%', objectFit: 'cover', borderRadius: 20 }} />
+          <div style={{ marginTop: 20, fontSize: 32, fontWeight: 'bold' }}>{current.name}</div>
+          <div style={{ marginTop: 10, fontSize: 18 }}>{i + 1}/{NFTS.length}</div>
+        </div>
+      ),
+      SIZE
+    ),
+    intents: [
+      <Button value="prev">Prev</Button>,
+      <Button value="next">Next</Button>,
+      <Button.Link href={current.url}>Open NFT</Button.Link>
+    ],
+    state: { i }
+  })
+})
+
+// --- Server ---
+const PORT = process.env.PORT || 3000
+serve({ fetch: app.fetch, port: PORT })
+console.log(`NFT Gallery Frame v2 running at http://localhost:${PORT}/frame`)
